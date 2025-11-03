@@ -1,0 +1,14 @@
+ipykernel
+python-dotenv
+pyautogen
+autogen
+autogen-ext[openai]
+openai
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+nest_asyncio
+markdown
+langgraph
