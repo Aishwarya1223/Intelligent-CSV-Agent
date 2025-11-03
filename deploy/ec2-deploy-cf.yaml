@@ -68,6 +68,8 @@ Resources:
         GenerateStringKey: secret
         ExcludePunctuation: true
         PasswordLength: 40
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
 
   ECRRepository:
     Type: AWS::ECR::Repository
@@ -125,7 +127,6 @@ Resources:
       IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
-      SubnetId: !Select [0, !GetAZs '']   # optional override if you want subnet selection
       Tags:
         - Key: Name
           Value: !Sub '${ApplicationName}-ec2'
