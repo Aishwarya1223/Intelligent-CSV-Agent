@@ -7,8 +7,6 @@ Parameters:
   ApplicationName:
     Type: String
     Default: intelligent-csv-analyst
-  KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
   InstanceType:
     Type: String
     Default: t3.medium
@@ -123,7 +121,7 @@ Resources:
     Properties:
       ImageId: !Ref LatestAmiId
       InstanceType: !Ref InstanceType
-      KeyName: !Ref KeyName
+      KeyName: intelligent-csv-analyst-keypair
       IamInstanceProfile: !Ref EC2InstanceProfile
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup

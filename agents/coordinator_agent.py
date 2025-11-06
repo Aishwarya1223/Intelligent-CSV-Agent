@@ -1,12 +1,14 @@
 # langgraph_integration.py
+import sys, os; 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import os
 import json
 from typing import Any, Dict
 
-from data_analyst_agent import DataAnalystAgent
-from evaluator_agent import EvaluatorAgent
-from report_agent import ReportAgent
+from agents.data_analyst_agent import DataAnalystAgent
+from agents.evaluator_agent import EvaluatorAgent
+from agents.report_agent import ReportAgent
 
 try:
     from langgraph.graph import Graph, Node, State

@@ -3,9 +3,11 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import sys, os; 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import List, Optional, Dict, Any
-from autogen_core import FunctionTool
-from csv_tools import load_csv_safely
+from autogen_core.tools import FunctionTool
+from tools.csv_tools import load_csv_safely
 
 def plot_numeric_histograms(path: str, out_dir: str = "plots/histograms", bins: int = 30) -> List[str]:
     """

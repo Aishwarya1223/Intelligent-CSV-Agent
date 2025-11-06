@@ -1,12 +1,16 @@
+import sys, os; 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 import os,json,datetime,asyncio,re
 from pathlib import Path
 from typing import List, Tuple, Dict, Any,Optional
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 import markdown as md_lib
-
+import nest_asyncio
 try:
-    from data_analyst_agent import DataAnalystAgent
+    from agents.data_analyst_agent import DataAnalystAgent
 except Exception as e:
     raise ImportError("Failed to import DataAnalystAgent. Ensure all dependencies are installed.") from e
 
@@ -14,7 +18,11 @@ try:
     from agents.evaluator_agent import EvaluatorAgent
 except Exception as e:
     raise ImportError("Failed to import EvaluatorAgent. Ensure all dependencies are installed.") from e
+from dotenv import load_dotenv
+load_dotenv()
 
+
+os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
 
 class ReportAgent:
     """
@@ -90,7 +98,6 @@ class ReportAgent:
         try:
             return asyncio.run(coro)
         except RuntimeError:
-            import nest_asyncio
             nest_asyncio.apply()
             loop = asyncio.get_event_loop()
             return loop.run_until_complete(coro)
@@ -100,7 +107,7 @@ class ReportAgent:
         try:
             return asyncio.run(coro)
         except RuntimeError:
-            import nest_asyncio
+            
             nest_asyncio.apply()
             loop = asyncio.get_event_loop()
             return loop.run_until_complete(coro)
@@ -154,6 +161,7 @@ class ReportAgent:
         out_dir: str = "reports",
         use_llm_summary: bool = True,
         polish_report: bool = False,
+        save_html: bool = False,
     ) -> str:
         """
         Full synchronous pipeline:
@@ -239,4 +247,15 @@ class ReportAgent:
 
         # save
         md_path.write_text(final_md, encoding="utf-8")
+
+        # optionally also save HTML
+        if save_html:
+            try:
+                html = self._render_html(final_md)
+                html_path = out_path / f"{base}.html"
+                html_path.write_text(html, encoding="utf-8")
+            except Exception as e:
+                # do not fail whole pipeline because HTML rendering failed; include debug comment
+                md_path.write_text(final_md + f"\n\n<!-- html_save_failed: {e} -->", encoding="utf-8")
+
         return str(md_path)

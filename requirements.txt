@@ -12,3 +12,5 @@ seaborn
 nest_asyncio
 markdown
 langgraph
+certifi
+httpx

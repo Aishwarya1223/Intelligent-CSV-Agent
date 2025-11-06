@@ -6,7 +6,7 @@ import os
 import matplotlib.pyplot as plt
 
 from typing import Dict, Any, Optional,List,Tuple
-from autogen_core import FunctionTool
+from autogen_core.tools import FunctionTool
 
 def load_csv_safely(path: str,max_rows: int = 100000)->pd.DataFrame:
     
@@ -79,26 +79,36 @@ def plot_column_hist(path: str, column: str, out_path: str = "histogram.png", bi
     plt.close()
     return out_path
 
-def generate_insights(summary: Dict[str, Any], correlations: List[Tuple[str, str, float]]) -> str:
+def generate_insights(summary: Dict[str, Any], correlations: List[Dict[str, Any]]) -> str:
     """
     Generate plain-English insights from numeric summaries and correlations.
-    (Can also be delegated to the LLM if you want natural reasoning.)
+    correlations: list of dicts like {"c1": "colA", "c2": "colB", "corr": 0.87}
     """
     lines = []
     lines.append(f"Analyzed {len(summary.get('numeric_summary', {}))} numeric columns.")
     for col, stats in summary.get("numeric_summary", {}).items():
         mean = stats.get("mean")
-        lines.append(f"- {col}: avg={mean:.2f}" if mean is not None else f"- {col}: no numeric data")
+        if mean is None:
+            lines.append(f"- {col}: no numeric data")
+        else:
+            lines.append(f"- {col}: avg={mean:.2f}")
     if correlations:
         lines.append("\nStrongest correlations:")
-        for c1, c2, val in correlations:
-            lines.append(f"  - {c1} vs {c2}: corr={val:.2f}")
+        for item in correlations:
+            c1 = item.get("c1")
+            c2 = item.get("c2")
+            val = item.get("corr")
+            try:
+                valf = float(val)
+                lines.append(f"  - {c1} vs {c2}: corr={valf:.2f}")
+            except Exception:
+                lines.append(f"  - {c1} vs {c2}: corr={val}")
     return "\n".join(lines)
 
 
 
 preview_csv_tool=FunctionTool(preview_csv,
-                              desciption="Gives a preview of the csv file")
+                              description="Gives a preview of the csv file")
 summarize_numeric_tool=FunctionTool(summarize_numeric,
                                     description="Gives a summary of numerical columns in the csv")
 
@@ -107,6 +117,8 @@ compute_correlations_tool=FunctionTool(compute_correlations,
 plot_column_hist_tool=FunctionTool(plot_column_hist,
                                    description='Plot a histogram for a numeric column and save to file.')
 
-generate_insights_tool=FunctionTool(generate_insights,
-                                    description='Generate plain-English insights from numeric summaries and correlations.')
+generate_insights_tool = FunctionTool(
+    generate_insights,
+    description='Generate plain-English insights from numeric summaries and correlations.',
+)
 

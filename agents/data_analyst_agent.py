@@ -1,13 +1,16 @@
 # assistant_agent.py
+import sys, os; 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
 import asyncio
 import json
 from typing import Dict,List,Tuple,Any,Optional
-from autogen import FunctionTool
+from autogen_core.tools import FunctionTool
 from tools.csv_tools import *
 import os
-from prompts import PromptTemplate,INSIGHT_TEMPLATE
+from agents.prompts import PromptTemplate,INSIGHT_TEMPLATE
+
 from tools.viz_tools import *
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -20,16 +23,23 @@ csv_tools=[preview_csv_tool,
        plot_column_hist_tool,
        generate_insights_tool,
        ]
+import certifi
 
+# Force Python and HTTP libraries (like httpx, requests, openai) to use certifi's trusted CA bundle
+os.environ["SSL_CERT_FILE"] = certifi.where()
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+
+
+os.environ['OPENAI_API_KEY']=os.getenv("OPENAI_API_KEY")
+
+
+print(f"Using certifi bundle at: {certifi.where()}")
 class DataAnalystAgent:
     def __init__(self, model: str = "gpt-4o-mini"):
         """Initialize AssistantAgent automatically."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise EnvironmentError("Please set OPENAI_API_KEY in your environment.")
 
         # Create model + assistant
-        model_client = OpenAIChatCompletionClient(model=model, api_key=api_key)
+        model_client = OpenAIChatCompletionClient(model=model)
         all_tools = csv_tools + viz_tools
 
         self.assistant = AssistantAgent(

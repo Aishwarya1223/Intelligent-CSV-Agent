@@ -1,5 +1,4 @@
 # prompts.py
-
 class PromptTemplate:
     """A minimal prompt template for formatting variables into text."""
     def __init__(self, template: str):

@@ -3,7 +3,6 @@ from typing import Dict,Any,List
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 
-
 class EvaluatorAgent:
     def __init__(self,model: str='gpt-4o-mini'):
         model_client=OpenAIChatCompletionClient(model=model)
