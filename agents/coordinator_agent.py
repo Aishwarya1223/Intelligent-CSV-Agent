@@ -50,7 +50,7 @@ def evaluator_node(state: Dict[str, Any]):
     return state
 
 def fix_node(state: Dict[str, Any]):
-    # If score below threshold, re-run analyst with different tone
+   
     threshold = state.get("fix_threshold", 4.0)
     if state.get("overall_score", 0.0) < threshold:
         # change tone and rerun
@@ -97,7 +97,6 @@ def build_and_run_graph(csv_path: str, n_insights: int = 3, out_dir: str = "repo
         "save_html": True,
     }
 
-    # If real LangGraph is available, use Graph/Node to wire up nodes & run
     if Graph is not None:
         g = Graph(name="csv_analyst_pipeline")
         # register nodes (API names differ by version — consult docs)
@@ -115,7 +114,6 @@ def build_and_run_graph(csv_path: str, n_insights: int = 3, out_dir: str = "repo
         # fallback sequential run (same semantics as the graph)
         state = data_analyst_node(state)
         state = evaluator_node(state)
-        # optionally fix
         state = fix_node(state)
         state = report_node(state)
         res_state = state

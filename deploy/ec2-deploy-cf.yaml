@@ -23,9 +23,11 @@ Parameters:
   VpcId:
     Type: 'AWS::EC2::VPC::Id'
     Description: Select the default VPC from your account
+Conditions:
+  HasContainerImage: !Not [ !Equals [ !Ref ContainerImage, "" ] ]
+
 
 Resources:
-
   InstanceSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -129,29 +131,47 @@ Resources:
         - Key: Name
           Value: !Sub '${ApplicationName}-ec2'
       UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash -xe
-          yum update -y
-          amazon-linux-extras install docker -y
-          systemctl enable docker
-          systemctl start docker
+        Fn::Base64:
+          !If
+            - HasContainerImage
+            - !Sub |
+                #!/bin/bash -xe
+                yum update -y
+                amazon-linux-extras install docker -y
+                systemctl enable docker
+                systemctl start docker
 
-          REGION=${AWS::Region}
-          ACCOUNT=${AWS::AccountId}
-          REPO_URI="$${ACCOUNT}.dkr.ecr.$${REGION}.amazonaws.com/${ECRRepository}"
+                # Use the image supplied by the user
+                IMAGE_URI=${ContainerImage}
 
-          if [ "${ContainerImage}" != "" ]; then
-            IMAGE_URI="${ContainerImage}"
-          else
-            IMAGE_URI="$${REPO_URI}:latest"
-          fi
+                # Login and pull user image
+                aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+                docker pull "${IMAGE_URI}" || echo "Image not found, continuing"
+                
+                # Run container
+                docker run -d --name app -p 8080:8080 \
+                  -e CSV_BUCKET=${CsvBucket} \
+                  -e LLM_SECRET_ARN=${LLMApiSecret} \
+                  "${IMAGE_URI}"
+            - !Sub |
+                #!/bin/bash -xe
+                yum update -y
+                amazon-linux-extras install docker -y
+                systemctl enable docker
+                systemctl start docker
 
-          aws ecr get-login-password --region $${REGION} | docker login --username AWS --password-stdin $${ACCOUNT}.dkr.ecr.$${REGION}.amazonaws.com
-          docker pull $${IMAGE_URI} || echo "Image not found, push to ECR first"
-          docker run -d --name app -p 8080:8080 \
-            -e CSV_BUCKET=${CsvBucket} \
-            -e LLM_SECRET_ARN=${LLMApiSecret} \
-            $${IMAGE_URI}
+                # Build repo/image URI from CFN pseudo-params and logical id
+                IMAGE_URI=${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest
+
+                # Login and pull image from ECR
+                aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+                docker pull "${IMAGE_URI}" || echo "Image not found, continuing"
+
+                # Run container
+                docker run -d --name app -p 8080:8080 \
+                  -e CSV_BUCKET=${CsvBucket} \
+                  -e LLM_SECRET_ARN=${LLMApiSecret} \
+                  "${IMAGE_URI}"
 
 Outputs:
   InstancePublicIP:

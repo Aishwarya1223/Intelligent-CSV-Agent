@@ -1,6 +1,6 @@
 flowchart TD
   subgraph UserSide
-    U[User / Client\n(csv path, n_insights)]
+    U[User / Client<br/>(csv path, n_insights)]
   end
 
   subgraph Orchestrator
