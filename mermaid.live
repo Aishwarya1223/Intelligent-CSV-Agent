@@ -1,0 +1,47 @@
+flowchart TD
+  subgraph UserSide
+    U[User / Client\n(csv path, n_insights)]
+  end
+
+  subgraph Orchestrator
+    RA[ReportAgent]
+  end
+
+  subgraph Analysis["Analysis Subsystem"]
+    DA[DataAnalystAgent\n(AssistantAgent + LLM)]
+    CSVT[CSV Tools\n(preview, summarize, correlations, generate_insights)]
+  end
+
+  subgraph Visualization["Visualization Subsystem"]
+    VIZ[ Viz Tools\n(hist, heatmap, scatter, top_corrs) ]
+  end
+
+  subgraph Evaluation["Evaluation Subsystem"]
+    EV[EvaluatorAgent\n(AssistantAgent)]
+  end
+
+  AA[AssistantAgent\n(Executive Summary / Polish)]
+  STORE[Storage\n(.md, .html, plots/)]
+
+  %% Main flows
+  U -->|1. submit CSV| RA
+  RA -->|2. request analysis (prompt)| DA
+  DA -->|3. call tools| CSVT
+  CSVT -->|4. numeric_summary/corrs| DA
+  DA -->|5. insights_text| RA
+
+  RA -->|6. request visuals| VIZ
+  VIZ -->|7. plot files| RA
+
+  RA -->|8. evaluate insights| EV
+  EV -->|9. evaluation JSON| RA
+
+  RA -->|10. generate exec summary (optional)| AA
+  AA -->|11. exec_summary| RA
+
+  RA -->|12. save report & visuals| STORE
+  STORE -->|13. report path| U
+
+  %% Annotations
+  classDef llm fill:#ffd,stroke:#333;
+  class DA,EV,AA llm
