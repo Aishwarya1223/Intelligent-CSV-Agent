@@ -3,5 +3,10 @@
 merged_cacert.pem
 *.pemmerged_cacert.pem
 test_*.py
+
+
+research/
 *.live
+*.tex
+*.pdf
 *.svg
