@@ -1,4 +1,5 @@
 .venv
+venv/
 .env
 merged_cacert.pem
 *.pemmerged_cacert.pem

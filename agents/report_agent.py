@@ -9,6 +9,8 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 import markdown as md_lib
 import nest_asyncio
+import httpx
+
 try:
     from agents.data_analyst_agent import DataAnalystAgent
 except Exception as e:
@@ -43,16 +45,21 @@ class ReportAgent:
         # create or reuse evaluator
         self.evaluator = evaluator or EvaluatorAgent(model=model)
 
-        # Decide which AssistantAgent this ReportAgent uses:
-        # - if reuse_evaluator_assistant True: use evaluator.assistant (reuse same LLM instance)
-        # - otherwise create a fresh AssistantAgent (useful for different system prompts / rate limits)
         if reuse_evaluator_assistant and hasattr(self.evaluator, "assistant"):
             self.assistant = self.evaluator.assistant
         else:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 raise EnvironmentError("Please set OPENAI_API_KEY for ReportAgent.")
-            model_client = OpenAIChatCompletionClient(model=model, api_key=api_key)
+            
+            # create an insecure HTTPX client (verify=False)
+            transport = httpx.AsyncHTTPTransport(verify=False)
+
+            model_client = OpenAIChatCompletionClient(
+                model=model,
+                client=httpx.AsyncClient(transport=transport, timeout=30.0)
+            )
+
             self.assistant = AssistantAgent(
                 name="report_agent",
                 model_client=model_client,
@@ -120,7 +127,6 @@ class ReportAgent:
             # Using the official markdown library for best results
             html = md_lib.markdown(markdown_text, extensions=["tables", "fenced_code"])
         except Exception:
-            # fallback minimal converter
             html = markdown_text
             html = re.sub(r'^# (.*)$', r'<h1>\1</h1>', html, flags=re.M)
             html = re.sub(r'^## (.*)$', r'<h2>\1</h2>', html, flags=re.M)
@@ -128,26 +134,61 @@ class ReportAgent:
             html = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'<img alt="\1" src="\2" style="max-width:100%;height:auto;">', html)
             html = html.replace("\n", "<br/>\n")
 
-        # Wrap nicely for viewing
         wrapped = f"""
         <html>
         <head>
-            <meta charset='utf-8'>
+            <meta charset="utf-8">
             <title>CSV Analysis Report</title>
+
+            <!-- Bootstrap 5 CSS -->
+            <link 
+                href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" 
+                rel="stylesheet"
+                integrity="sha384-VkTXQYdRjFN27T8eCEi0aKBslZx2drFJ/7Lr1gChX2NDVYTHQZnIcXtNC" 
+                crossorigin="anonymous"
+            >
+
             <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
-                pre {{ background: #f4f4f4; padding: 10px; border-radius: 8px; }}
-                table {{ border-collapse: collapse; width: 100%; }}
-                th, td {{ border: 1px solid #ccc; padding: 6px; text-align: left; }}
-                img {{ display: block; margin: 10px auto; max-width: 90%; }}
-                h1, h2, h3 {{ color: #333; }}
+                body {{
+                    font-family: Arial, sans-serif;
+                    margin: 40px;
+                    line-height: 1.6;
+                }}
+                pre {{
+                    background: #f4f4f4;
+                    padding: 10px;
+                    border-radius: 8px;
+                }}
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                }}
+                th, td {{
+                    border: 1px solid #ccc;
+                    padding: 6px;
+                    text-align: left;
+                }}
+                img {{
+                    display: block;
+                    margin: 10px auto;
+                    max-width: 90%;
+                }}
+                h1, h2, h3 {{
+                    color: #333;
+                }}
             </style>
         </head>
-        <body>
+        <body class="container mt-4">
             {html}
+            <script 
+                src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+                crossorigin="anonymous">
+            </script>
         </body>
         </html>
         """
+
+
         return wrapped
     def _ensure_outdir(self, out_dir: str) -> Path:
         p = Path(out_dir)
@@ -155,107 +196,147 @@ class ReportAgent:
         return p
 
     def generate_report(
-        self,
-        path: str,
-        n_insights: int = 3,
-        out_dir: str = "reports",
-        use_llm_summary: bool = True,
-        polish_report: bool = False,
-        save_html: bool = False,
-    ) -> str:
+    self,
+    path: str,
+    n_insights: int = 3,
+    out_dir: str = "reports",
+    use_llm_summary: bool = True,
+    polish_report: bool = False,
+    save_html: bool = False,
+) -> str:
         """
-        Full synchronous pipeline:
-          1) get insights (DataAnalystAgent)
-          2) generate visuals (DataAnalystAgent.visual_summary)
-          3) evaluate insights (EvaluatorAgent)
-          4) get LLM executive summary (optional)
-          5) build markdown, optionally polish via assistant
-        Returns path to saved markdown (or polished markdown if polish_report=True).
+        Robust synchronous pipeline: always writes a markdown file even if intermediate steps fail.
+        Returns path to saved markdown.
         """
         out_path = self._ensure_outdir(out_dir)
         tstamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         base = f"report_{Path(path).stem}_{tstamp}"
         md_path = out_path / f"{base}.md"
 
-        # 1) insights
-        insights_text = self.analyst.analyze(path, n_insights=n_insights)
-
-        # 2) visuals
+        errors: List[str] = []
+        insights_text = ""
         visuals = {}
-        try:
-            visuals = self.analyst.visual_summary(path)
-        except Exception as e:
-            visuals = {"error": str(e)}
+        evaluation = {}
 
-        # 3) evaluation
+        print("[report] 1) Running analyst.analyze()")
+        try:
+            # if your analyst supports out_dir, pass it; otherwise just call
+            try:
+                insights_text = self.analyst.analyze(path, n_insights=n_insights, tone="concise and actionable")
+            except TypeError:
+                # fallback if analyze signature doesn't accept tone/out_dir
+                insights_text = self.analyst.analyze(path, n_insights=n_insights)
+            print("[report] insights length:", len(insights_text or ""))
+        except Exception as e:
+            err = f"data_analyst.analyze failed: {e}"
+            print("[report]", err)
+            errors.append(err)
+
+        print("[report] 2) Generating visuals")
+        try:
+            # prefer passing out_dir if supported
+            try:
+                visuals = self.analyst.visual_summary(path, out_dir=str(out_path))
+            except TypeError:
+                visuals = self.analyst.visual_summary(path)
+            print("[report] visuals:", list(visuals.keys()) if isinstance(visuals, dict) else "no dict")
+        except Exception as e:
+            err = f"visual_summary failed: {e}"
+            print("[report]", err)
+            errors.append(err)
+            visuals = {"visuals": {}}
+
+        print("[report] 3) Evaluating insights")
         try:
             evaluation = self.evaluator.evaluate(insights_text)
+            print("[report] evaluation keys:", list(evaluation.keys()))
         except Exception as e:
-            evaluation = {"error": str(e)}
+            err = f"evaluator.evaluate failed: {e}"
+            print("[report]", err)
+            errors.append(err)
+            evaluation = {"error": err}
 
-        # 4) LLM executive summary (optional)
         exec_summary = None
         if use_llm_summary:
+            print("[report] 4) Generating LLM executive summary")
             try:
                 exec_summary = self._generate_exec_summary(insights_text, evaluation)
+                print("[report] exec summary length:", len(exec_summary or ""))
             except Exception as e:
-                exec_summary = f"Executive summary generation failed: {e}"
+                err = f"exec summary failed: {e}"
+                print("[report]", err)
+                errors.append(err)
+                exec_summary = None
 
-        # 5) render markdown (simple, reuse your previous rendering pattern)
-        md = []
-        md.append(f"# CSV Analysis Report: {Path(path).name}\n")
-        md.append(f"*Generated: {datetime.datetime.now().isoformat(sep=' ', timespec='seconds')}*\n")
-        md.append(f"**Data file**: `{path}`\n\n")
+        # Build markdown
+        md_lines = []
+        md_lines.append(f"# CSV Analysis Report: {Path(path).name}\n")
+        md_lines.append(f"*Generated: {datetime.datetime.now().isoformat(sep=' ', timespec='seconds')}*\n")
+        md_lines.append(f"**Data file**: `{path}`\n\n")
 
         if exec_summary:
-            md.append("## Executive Summary (LLM-generated)\n")
-            md.append(exec_summary + "\n\n")
+            md_lines.append("## Executive Summary (LLM-generated)\n")
+            md_lines.append(exec_summary + "\n\n")
+        elif insights_text:
+            md_lines.append("## Executive Summary\n")
+            md_lines.append("\n".join([l.strip() for l in insights_text.splitlines() if l.strip()][:3]) + "\n\n")
         else:
-            lines = [l.strip() for l in insights_text.strip().splitlines() if l.strip()]
-            if lines:
-                md.append("## Executive Summary\n")
-                md.append("\n".join(lines[:3]) + "\n\n")
+            md_lines.append("## Executive Summary\n_No insights generated._\n\n")
 
-        md.append("## Full Insights\n")
-        md.append("```\n" + insights_text.strip() + "\n```\n\n")
+        md_lines.append("## Full Insights\n")
+        md_lines.append("```\n" + (insights_text or "_no insights_") + "\n```\n\n")
 
-        md.append("## Evaluator Results\n")
-        md.append("```\n" + json.dumps(evaluation, indent=2) + "\n```\n\n")
+        md_lines.append("## Evaluator Results\n")
+        md_lines.append("```\n" + json.dumps(evaluation, indent=2) + "\n```\n\n")
 
-        md.append("## Visuals\n")
-        vis = visuals.get("visuals") if isinstance(visuals, dict) else visuals
-        if vis:
-            for k, v in vis.items():
+        md_lines.append("## Visuals\n")
+        vis_content = visuals.get("visuals") if isinstance(visuals, dict) else visuals
+        if not vis_content:
+            md_lines.append("_No visuals generated._\n")
+        else:
+            # normalize visuals into path lists
+            for k, v in (vis_content.items() if isinstance(vis_content, dict) else []):
                 if isinstance(v, list):
                     for fp in v:
-                        md.append(f"![{Path(fp).name}]({fp})\n\n")
-                elif isinstance(v, str):
-                    md.append(f"![{Path(v).name}]({v})\n\n")
-        else:
-            md.append("_No visuals generated._\n")
+                        md_lines.append(f"![{Path(fp).name}]({fp})\n\n")
+                elif isinstance(v, str) and v:
+                    md_lines.append(f"![{Path(v).name}]({v})\n\n")
 
-        raw_md = "\n".join(md)
+        # Add errors section if any
+        if errors:
+            md_lines.append("## Errors / Notes\n")
+            for e in errors:
+                md_lines.append(f"- {e}\n")
+            md_lines.append("\n")
 
-        # 6) optional polishing via LLM
+        raw_md = "\n".join(md_lines)
+
+        # Optionally polish
         final_md = raw_md
         if polish_report:
             try:
                 final_md = self._polish_markdown(raw_md)
             except Exception as e:
-                # fallback to raw markdown if polishing fails
                 final_md = raw_md + f"\n\n<!-- polishing_failed: {e} -->"
 
-        # save
-        md_path.write_text(final_md, encoding="utf-8")
+        # Save markdown (always)
+        try:
+            md_path.write_text(final_md, encoding="utf-8")
+            print("[report] saved markdown to", md_path)
+        except Exception as e:
+            # final fallback: write to current dir
+            fallback = Path(f"./{base}.md")
+            fallback.write_text(final_md, encoding="utf-8")
+            print("[report] failed to write to out_dir, wrote to", fallback, "error:", e)
+            md_path = fallback
 
-        # optionally also save HTML
         if save_html:
             try:
                 html = self._render_html(final_md)
                 html_path = out_path / f"{base}.html"
                 html_path.write_text(html, encoding="utf-8")
+                print("[report] saved html to", html_path)
             except Exception as e:
-                # do not fail whole pipeline because HTML rendering failed; include debug comment
-                md_path.write_text(final_md + f"\n\n<!-- html_save_failed: {e} -->", encoding="utf-8")
+                print("[report] html save failed:", e)
 
         return str(md_path)

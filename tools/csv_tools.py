@@ -1,76 +1,126 @@
 # tools/csv_tools.py
-# Auto-generated placeholder
+# Leaner, safer CSV utilities for quick analysis
+
+import os
+from typing import Dict, Any, Optional, List, Tuple
 import pandas as pd
 import numpy as np
-import os
 import matplotlib.pyplot as plt
-
-from typing import Dict, Any, Optional,List,Tuple
+import csv
 from autogen_core.tools import FunctionTool
 
-def load_csv_safely(path: str,max_rows: int = 100000)->pd.DataFrame:
-    
+MAX_BYTES = 50 * 1024 * 1024
+
+def load_csv_safely(path: str, max_rows: int = 100_000) -> pd.DataFrame:
+    """Load CSV robustly: sniff delimiter, try utf-8/latin1, sample if large, coerce numeric-like cols."""
     if not os.path.exists(path):
-        raise ValueError("File not found!")
-    file_size=os.path.getsize(path)
-    if file_size > 50 *1024 *1024:
-        raise ValueError("File is too large for analysis (limit=50MB)")
-    
-    df=pd.read_csv(path)
+        raise FileNotFoundError(path)
+
+    size = os.path.getsize(path)
+    if size > MAX_BYTES:
+        raise ValueError(f"File too large (> {MAX_BYTES} bytes).")
+
+    with open(path, "rb") as fb:
+        sample_bytes = fb.read(16_384)
+    for enc in ("utf-8", "latin1"):
+        try:
+            sample = sample_bytes.decode(enc, errors="replace")
+            sniffer = csv.Sniffer()
+            try:
+                dialect = sniffer.sniff(sample)
+                sep = dialect.delimiter
+            except Exception:
+                sep = None
+            try:
+                if sep:
+                    df = pd.read_csv(path, sep=sep, encoding=enc, low_memory=False)
+                else:
+                    df = pd.read_csv(path, encoding=enc, low_memory=False)
+                break
+            except Exception:
+                continue
+        except Exception:
+            continue
+    else:
+        df = pd.read_csv(path, encoding="utf-8", low_memory=False)
+
     if len(df) > max_rows:
-        df=df.sample(max_rows,random_state=42)
+        df = df.sample(n=max_rows, random_state=42).reset_index(drop=True)
+
+    for col in df.columns:
+        if df[col].dtype == "object":
+            sample_vals = df[col].dropna().astype(str).head(50).tolist()
+            numeric_like = 0
+            for v in sample_vals:
+                vv = v.replace(",", "").replace("$", "").replace("€", "").replace("₹", "").strip()
+                try:
+                    float(vv)
+                    numeric_like += 1
+                except Exception:
+                    pass
+            if len(sample_vals) > 0 and numeric_like / len(sample_vals) > 0.6:
+                df[col] = df[col].astype(str).str.replace(r"[,\$\€\₹\s]", "", regex=True)
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
     return df
-
-def preview_csv(path: str, n_rows: int=5) -> Dict[str,Any]:
-    df=load_csv_safely(path)
-    preview=df.head(n_rows).to_dict(orient='records')
-    return{
-        'num_rows':len(df),
-        'num_columns': len(df.columns),
-        "columns":df.columns.tolist(),
-        "preview":preview,
+def preview_csv(path: str, n_rows: int = 5) -> Dict[str, Any]:
+    df = load_csv_safely(path)
+    return {
+        "num_rows": len(df),
+        "num_columns": len(df.columns),
+        "columns": df.columns.tolist(),
+        "preview": df.head(n_rows).to_dict(orient="records"),
     }
-def summarize_numeric(path:str,
-                      columns: Optional[List[str]]=None)->Dict[str,Any]:
-    df=load_csv_safely(path)
-    num_df=df.select_dtypes(include='number')
+
+def summarize_numeric(path: str, columns: Optional[List[str]] = None) -> Dict[str, Any]:
+    df = load_csv_safely(path)
+    num = df.select_dtypes(include="number")
     if columns:
-        num_df=num_df[columns]
-    desc=num_df.describe(percentiles=[0.25,0.5,0.75]).T
-    summary=desc.to_dict(orient='index')
-    return {"numeric_summary":summary}
+        missing_cols = [c for c in columns if c not in num.columns]
+        if missing_cols:
+            raise KeyError(f"Requested numeric columns not found: {missing_cols}")
+        num = num[columns]
+    desc = num.describe(percentiles=[0.25, 0.5, 0.75]).T
+    return {"numeric_summary": desc.to_dict(orient="index")}
 
-def missing_value_summary(path:str)->Dict[str,Any]:
-    df=load_csv_safely(path)
-    missing=df.isna().sum().to_dict()
-    total=len(df)
-    return{
-        "missing_counts":missing,
-        "missing_percentages":{k:(v/total) * 100 for k, v in missing.items()}
+def missing_value_summary(path: str) -> Dict[str, Any]:
+    df = load_csv_safely(path)
+    total = len(df)
+    missing = df.isna().sum().to_dict()
+    return {
+        "missing_counts": missing,
+        "missing_percentages": {k: (v / total) * 100 for k, v in missing.items()},
     }
 
-def compute_correlations(path: str, top_k: int = 5) -> List[Tuple[str, str, float]]:
+
+def compute_correlations(path: str, top_k: int = 5) -> List[Dict[str, Any]]:
     """
-    Compute top_k absolute correlations among numeric columns.
-    Returns a list of (col1, col2, correlation).
+    Return top_k absolute correlations among numeric columns as list of dicts:
+    [{"c1":"colA","c2":"colB","corr":0.87}, ...]
     """
     df = load_csv_safely(path)
     corr = df.corr(numeric_only=True)
-    pairs = []
-    for i in range(len(corr.columns)):
-        for j in range(i + 1, len(corr.columns)):
-            pairs.append((corr.columns[i], corr.columns[j], corr.iloc[i, j]))
-    pairs.sort(key=lambda x: abs(x[2]), reverse=True)
-    return pairs[:top_k]
-def plot_column_hist(path: str, column: str, out_path: str = "histogram.png", bins: int = 30) -> str:
-    """
-    Plot a histogram for a numeric column and save to file.
-    """
+    pairs: List[Tuple[str, str, float]] = []
+    cols = corr.columns.tolist()
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            pairs.append((cols[i], cols[j], corr.iloc[i, j]))
+    pairs.sort(key=lambda x: abs(x[2]) if x[2] is not None else 0.0, reverse=True)
+    return [{"c1": a, "c2": b, "corr": float(np.nan_to_num(v, nan=0.0))} for a, b, v in pairs[:top_k]]
+
+
+def plot_column_hist(path: str,column: str,out_dir: str = "outputs",subfolder: str = "plots/histograms",filename: Optional[str] = None,bins: int = 30,) -> str:
     df = load_csv_safely(path)
     if column not in df.columns:
-        raise ValueError(f"Column {column} not found.")
+        raise KeyError(f"Column not found: {column}")
+
+    folder = os.path.join(out_dir, subfolder)
+    os.makedirs(folder, exist_ok=True)
+    filename = filename or f"{column}_hist.png"
+    out_path = os.path.join(folder, filename)
+
     plt.figure(figsize=(6, 4))
-    plt.hist(df[column].dropna(), bins=bins, color="skyblue", edgecolor="black")
+    plt.hist(df[column].dropna(), bins=bins)
     plt.title(f"Histogram of {column}")
     plt.xlabel(column)
     plt.ylabel("Frequency")
@@ -79,46 +129,33 @@ def plot_column_hist(path: str, column: str, out_path: str = "histogram.png", bi
     plt.close()
     return out_path
 
+
 def generate_insights(summary: Dict[str, Any], correlations: List[Dict[str, Any]]) -> str:
     """
-    Generate plain-English insights from numeric summaries and correlations.
-    correlations: list of dicts like {"c1": "colA", "c2": "colB", "corr": 0.87}
+    Build short plain-English insights.
+    `summary` should be the output of summarize_numeric().
+    `correlations` should be output of compute_correlations().
     """
-    lines = []
-    lines.append(f"Analyzed {len(summary.get('numeric_summary', {}))} numeric columns.")
+    num_cols = list(summary.get("numeric_summary", {}).keys())
+    lines = [f"Analyzed {len(num_cols)} numeric columns."]
     for col, stats in summary.get("numeric_summary", {}).items():
         mean = stats.get("mean")
-        if mean is None:
+        if mean is None or np.isnan(mean):
             lines.append(f"- {col}: no numeric data")
         else:
-            lines.append(f"- {col}: avg={mean:.2f}")
+            lines.append(f"- {col}: avg={mean:.2f}, std={stats.get('std', float('nan')):.2f}")
     if correlations:
-        lines.append("\nStrongest correlations:")
-        for item in correlations:
-            c1 = item.get("c1")
-            c2 = item.get("c2")
-            val = item.get("corr")
-            try:
-                valf = float(val)
-                lines.append(f"  - {c1} vs {c2}: corr={valf:.2f}")
-            except Exception:
-                lines.append(f"  - {c1} vs {c2}: corr={val}")
+        lines.append("\nTop correlations:")
+        for c in correlations:
+            lines.append(f"  - {c['c1']} vs {c['c2']}: corr={c['corr']:.2f}")
     return "\n".join(lines)
 
 
-
-preview_csv_tool=FunctionTool(preview_csv,
-                              description="Gives a preview of the csv file")
-summarize_numeric_tool=FunctionTool(summarize_numeric,
-                                    description="Gives a summary of numerical columns in the csv")
-
-compute_correlations_tool=FunctionTool(compute_correlations,
-                                  description='Computes top_k absolute correlations among numeric columns.')
-plot_column_hist_tool=FunctionTool(plot_column_hist,
-                                   description='Plot a histogram for a numeric column and save to file.')
-
-generate_insights_tool = FunctionTool(
-    generate_insights,
-    description='Generate plain-English insights from numeric summaries and correlations.',
+preview_csv_tool = FunctionTool(preview_csv, description="Preview CSV (rows, columns, sample).")
+summarize_numeric_tool = FunctionTool(summarize_numeric, description="Summary stats for numeric columns.")
+compute_correlations_tool = FunctionTool(compute_correlations, description="Top numeric correlations (dicts).")
+plot_column_hist_tool = FunctionTool(
+    plot_column_hist,
+    description="Save a histogram for a numeric column. Accepts out_dir to place file under dataset outputs."
 )
-
+generate_insights_tool = FunctionTool(generate_insights, description="Generate plain-English insights.")

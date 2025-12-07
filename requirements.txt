@@ -1,5 +1,7 @@
 ipykernel
 python-dotenv
+langchain
+langchain-community
 pyautogen
 autogen
 autogen-ext[openai]
@@ -14,3 +16,4 @@ markdown
 langgraph
 certifi
 httpx
+git-filter-repo

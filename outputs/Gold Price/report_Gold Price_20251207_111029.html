@@ -1,0 +1,128 @@
+
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>CSV Analysis Report</title>
+
+            <!-- Bootstrap 5 CSS -->
+            <link 
+                href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" 
+                rel="stylesheet"
+                integrity="sha384-VkTXQYdRjFN27T8eCEi0aKBslZx2drFJ/7Lr1gChX2NDVYTHQZnIcXtNC" 
+                crossorigin="anonymous"
+            >
+
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 40px;
+                    line-height: 1.6;
+                }
+                pre {
+                    background: #f4f4f4;
+                    padding: 10px;
+                    border-radius: 8px;
+                }
+                table {
+                    border-collapse: collapse;
+                    width: 100%;
+                }
+                th, td {
+                    border: 1px solid #ccc;
+                    padding: 6px;
+                    text-align: left;
+                }
+                img {
+                    display: block;
+                    margin: 10px auto;
+                    max-width: 90%;
+                }
+                h1, h2, h3 {
+                    color: #333;
+                }
+            </style>
+        </head>
+        <body class="container mt-4">
+            <pre><code class="language-markdown"># CSV Analysis Report: Gold Price.csv
+
+*Generated: 2025-12-07 11:10:53*
+
+**Data file**: `D:\Code files\Intelligent-csv-analyst\data\Gold Price.csv`
+
+## Executive Summary
+
+The analysis reveals an average gold price of 1440.33, with a standard deviation of 257.34, indicating considerable variability in price changes. A strong correlation of 0.999 between prices and their lows suggests that fluctuations in low prices closely mirror overall price trends, which merits further exploration of the factors influencing this relationship. Additionally, a correlation of 0.999 between opening and high prices shows that initial market conditions significantly impact peak prices. The interconnections among price variables highlight tightly linked market dynamics, underscoring the need to monitor these metrics for insights into volatility patterns.
+
+**Recommendation:** Establish a monitoring system for price trends to support informed decision-making.
+
+## Full Insights
+
+1) The average price is 1440.33 with a standard deviation of 257.34, indicating significant variability in price movements. **Recommendation:** Monitor this metric closely.
+
+2) A correlation of 0.999 between price and low indicates that changes in low prices closely track overall price changes. **Recommendation:** Investigate the underlying drivers of this relationship.
+
+3) A very strong correlation of 0.999 exists between opening and high prices, suggesting that initial price conditions significantly affect the highest prices reached. **Recommendation:** Review historical trends for context.
+
+4) The relationships among price, open, high, and low variables show tight interconnections, indicating closely linked market dynamics. **Recommendation:** Explore volatility patterns in these metrics.
+
+## Evaluator Results
+
+```json
+{
+  &quot;status&quot;: &quot;success&quot;,
+  &quot;result&quot;: {
+    &quot;evaluations&quot;: [
+      {
+        &quot;insight&quot;: &quot;The average price is 1440.33 with a standard deviation of 257.34, indicating significant variability in price movements. Recommendation: Monitor this metric closely.&quot;,
+        &quot;clarity&quot;: 4,
+        &quot;usefulness&quot;: 3,
+        &quot;actionability&quot;: 2
+      },
+      {
+        &quot;insight&quot;: &quot;A correlation of 0.999 between price and low indicates that changes in low prices closely track overall price changes. Recommendation: Investigate the underlying drivers.&quot;,
+        &quot;clarity&quot;: 5,
+        &quot;usefulness&quot;: 4,
+        &quot;actionability&quot;: 3
+      },
+      {
+        &quot;insight&quot;: &quot;There is a very strong correlation of 0.999 between opening and high prices, suggesting that initial price conditions significantly affect the highest prices reached. Recommendation: Review historical trends for context.&quot;,
+        &quot;clarity&quot;: 5,
+        &quot;usefulness&quot;: 4,
+        &quot;actionability&quot;: 3
+      },
+      {
+        &quot;insight&quot;: &quot;The relationships among price, open, high, and low variables show tight interconnections, indicating closely linked market dynamics. Recommendation: Explore volatility patterns.&quot;,
+        &quot;clarity&quot;: 4,
+        &quot;usefulness&quot;: 3,
+        &quot;actionability&quot;: 2
+      }
+    ],
+    &quot;average_scores&quot;: {
+      &quot;clarity&quot;: 4.5,
+      &quot;usefulness&quot;: 3.5,
+      &quot;actionability&quot;: 2.5,
+      &quot;overall&quot;: 3.5
+    }
+  }
+}
+</code></pre>
+<h2>Visuals</h2>
+<p><img alt="Price Histogram" src="outputs\Gold Price\plots\histograms\Price_hist.png" /></p>
+<p><img alt="Open Histogram" src="outputs\Gold Price\plots\histograms\Open_hist.png" /></p>
+<p><img alt="High Histogram" src="outputs\Gold Price\plots\histograms\High_hist.png" /></p>
+<p><img alt="Low Histogram" src="outputs\Gold Price\plots\histograms\Low_hist.png" /></p>
+<p><img alt="Correlation Heatmap" src="outputs\Gold Price\plots\correlation_heatmap.png" /></p>
+<p><img alt="Scatter Matrix" src="outputs\Gold Price\plots\scatter_matrix.png" /></p>
+<p><img alt="Price vs Low" src="outputs\Gold Price\plots\top_correlations\Price_vs_Low.png" /></p>
+<p><img alt="Open vs High" src="outputs\Gold Price\plots\top_correlations\Open_vs_High.png" /></p>
+<p><img alt="Price vs High" src="outputs\Gold Price\plots\top_correlations\Price_vs_High.png" /></p>
+<p><img alt="Open vs Low" src="outputs\Gold Price\plots\top_correlations\Open_vs_Low.png" /></p>
+<p><img alt="High vs Low" src="outputs\Gold Price\plots\top_correlations\High_vs_Low.png" />
+```</p>
+            <script 
+                src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
+                crossorigin="anonymous">
+            </script>
+        </body>
+        </html>
+        
